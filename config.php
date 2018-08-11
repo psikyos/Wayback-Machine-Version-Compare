@@ -1,0 +1,9 @@
+<?php
+//此文件编码应为ANSI,以免java处理出错
+date_default_timezone_set("Asia/Shanghai");
+define("DATA_DIR","./data");
+define("DATA_HASH_DIR","./data_md5");
+define("START_URL","https://wiki.apache.org/nutch/NutchTutorial");
+define("WAYBACK_REWRITE_JS","DOMContentLoaded");
+//增加sleep时间?
+?>
