@@ -5,7 +5,7 @@ Wayback Machine Version Compare
 语种：php5.0及以上，java(for hadoop)
 操作:
 	以分析Apache Nutch的官方教程的版本为例，URL是https://wiki.apache.org/nutch/NutchTutorial.
-1.预处理
+0.预处理
 	修改config.php文件,找到START_URL行，改成如下：
 define("START_URL","https://wiki.apache.org/nutch/NutchTutorial");
 	常量DATA_DIR是下载目录所在的位置，也是清除html标签后所在的位置。常量DATA_HASH_DIR是清除html完成后，送入hadoop处理的目录。
@@ -28,8 +28,8 @@ php webarchive.php -hash
 4.在Hadoop上汇总结果
 	建立目录wordcount_classes。
 mkdir wordcount_classes
-	编译项目里的VersoinCount.java为jar包。
-java -d wordcount_classes VersoinCount.java
+	编译项目里的VersionCount.java为jar包。
+java -d wordcount_classes VersionCount.java
 	将目录wordcount_classes打包为jar。
 jar -cvf VersionCount.jar -C wordcount_classes/ .
 	将DATA_HASH_DIR上传到Hadoop的hdfs上.假设shell中位于hadoop项目的根目录。

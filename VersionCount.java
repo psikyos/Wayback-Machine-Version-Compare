@@ -49,17 +49,34 @@ public class VersionCount extends Configured implements Tool
             String singleDate;
             StringBuilder str_container=new StringBuilder();//组合用的string
             int count=0;
-            Iterator<Text> iterator=values.iterator();
+            Iterator<Text> iterator=values.iterator();//迭代器数量有可能是1
             while(iterator.hasNext())
             {
-                singleDate=iterator.next().toString();
+                //singleDate=iterator.next().toString();
+                StringTokenizer tokenizerLine=new StringTokenizer(iterator.next().toString()," ");//1 20160102134057 1 20170201153047
+                while(tokenizerLine.hasMoreTokens())
+                {
+                    singleDate=tokenizerLine.nextToken();
+                    //如果singleDate的长度很小
+                    if(singleDate.length()<4)
+                        continue;
+                    else
+                        str_container.append(singleDate+" ");
+
+                }
                 //组合字符
-                str_container.append(singleDate+" ");
+                //str_container.append(singleDate+" ");
                 count++;
             }
-            //int average=(int) sum/count;
-            //context.write(key,new IntWritable(average));
-            String str_output=String.format("%d %s",count,str_container.toString());
+            //因为对于一个url,way back上只会有一个时间戳,所以可以过滤count＝1的时间戳
+            String str_output="";
+            str_output=String.format("%d %s",count,str_container.toString());
+            //if(count>1)
+                System.out.println(str_output);
+            /*if(count>1)
+                str_output=String.format("%d %s",count,str_container.toString());
+            else//或者不存在空格也可以?
+                str_output=String.format("%s",str_container.toString());*/
             Text result=new Text(str_output);
             context.write(key,result);
         }
