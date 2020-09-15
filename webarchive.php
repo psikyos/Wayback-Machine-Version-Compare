@@ -9,7 +9,7 @@ $url=START_URL;
 //***basic directory process
 $save_dir=sprintf("%s/%s",dirname(__FILE__),DATA_DIR);
 define("BASE_DIR",$save_dir); //in case the directory variable is changed
-echo "save directory : ".BASE_DIR."\n";
+echo "base directory : ".BASE_DIR."\n";
 if(!file_exists(BASE_DIR))//make sure the base directory exists
     mkdir(BASE_DIR,0700);
 if(!file_exists(DATA_HASH_DIR))//make sure the data hash directory exists
@@ -38,38 +38,118 @@ else if ($_SERVER["argc"]>1)//parameter follow
  * 1.列出目录下所有文件
  * 2.去除所有html标签;或者转成pdf
  * 3.md5所有的文档,得到一个list;
- * 4.list查重.
+ * 4.list查重.提供一个单机版map reduce程序.
 */
     if($_SERVER["argv"][1]=="-clean")
     {
         //***clean html tag and wayback js phase
-        local_file_clean(BASE_DIR,WAYBACK_REWRITE_JS);//WAYBACK_REWRITE_JS="DOMContentLoaded";
-        //trim_html("./data/2006/20061223023521","./20061223023521");//debug write file
+        local_file_clean(BASE_DIR,WAYBACK_REWRITE_JS,//WAYBACK_REWRITE_JS="DOMContentLoaded";
+        WAYBACK_REWRITE_JS_END,
+        CLEAN_SCRIPT_CONTENT_SIGN,SCRIPT_START_KEYWORD,SCRIPT_END_KEYWORD);
         //***end of clean html tag and wayback js phase       
     }
     if($_SERVER["argv"][1]=="-hash")
     {
         //***file hash phase
         local_file_hash(BASE_DIR,DATA_HASH_DIR);
-        //放入hadoop分析
+        //放入hadoop的map reduce分析
         //***end of file hash phase
+    }
+    if($_SERVER["argv"][1]=="-mapreduce")
+    {
+        local_file_map_reduce(DATA_HASH_DIR,MAP_REDUCE_FILENAME);//MAP_REDUCE_FILENAME="part-r-00000"
     }
 }
 ?>
 <?php
 //local file process functions
-/** 列目录.并且去除html标签,去除wayback嵌入的函数
+/** 单机版map reduce过程
  */ 
-function local_file_clean($basic_dir,$wayback_keyword)
+function local_file_map_reduce($hash_dir,$mr_filename)
+{
+    $rt=list_file_for($hash_dir);//rt is an array
+    map_reduce($rt,$mr_filename);
+}
+
+/** ToDo:未来使用redis实现更好的集合性能
+ */ 
+function map_reduce($rt,$mr_filename)
+{
+    $cnt_file=count($rt);
+    $md5_array=array();
+    $date_array=array();//所有日期全部记录在一起,以空格分隔
+    $cnt_array=array();
+    //以上3个数组同索引
+    for($i=0;$i<$cnt_file;$i++)
+    {
+        $file_with_path=$rt[$i];
+        echo $file_with_path."\n";
+        $str_content=file_get_contents($file_with_path);
+        $one_line_array=explode("\t",$str_content);
+        $md5=$one_line_array[0];
+        $the_date=$one_line_array[1];
+        $flag=0;
+        $j=0;
+        for($j=0;$j<count($md5_array);$j++)
+        {
+            if($md5==$md5_array[$j])
+            {
+                $flag=1;
+                break;
+            }
+        }
+        if($flag==1)//如果已经存在,则累加计数
+        {
+            //$md5_array[$j]==$md5;
+            $cnt_array[$j]+=1;
+            $single=sprintf("%s %s",$date_array[$j],$the_date);
+            $date_array[$j]=$single;
+        }
+        else        
+        {
+            array_push($md5_array,$md5);
+            array_push($cnt_array,1);
+            array_push($date_array,$the_date);            
+        }
+    }
+    //存入文件
+    $save_content="";
+    for($i=0;$i<count($md5_array);$i++)
+    {
+        $single_line=sprintf("%s\t%s %s\n",$md5_array[$i],$cnt_array[$i],$date_array[$i]);
+        $save_content=$save_content.$single_line;
+    }
+    file_put_contents($mr_filename,$save_content);
+}
+
+/** 列目录.并且去除html标签,
+ * 如果$clean_script_sign标志为0,则只去除wayback嵌入的函数的script,其余script内容不清除;
+ * 如果$clean_script_sign标志为1,则清除所有的script内容.
+ */ 
+function local_file_clean($basic_dir,$wayback_keyword,$wayback_keyword_end,
+$clean_script_sign,$script_start_kw,$script_end_kw)
 {
     $rt=array();    
     list_file_recursive($basic_dir,$rt);//得到目录下的所有文件
     $cnt_file=count($rt);
-    for($i=0;$i<$cnt_file;$i++)
-    {   
-        $file_with_path=$rt[$i];
-        echo $file_with_path."\n";        
-        trim_html($file_with_path,$file_with_path,$wayback_keyword);//overwrite the file
+    if($clean_script_sign==1)
+    {
+        for($i=0;$i<$cnt_file;$i++)
+        {   
+            $file_with_path=$rt[$i];
+            echo $file_with_path."\n";        
+            trim_html_script($file_with_path,$file_with_path,$script_start_kw,$script_end_kw);//overwrite the file
+        }
+    }
+    else
+    {
+        for($i=0;$i<$cnt_file;$i++)
+        {   
+            $file_with_path=$rt[$i];
+            echo $file_with_path."\n";        
+            trim_html($file_with_path,$file_with_path,$wayback_keyword,$wayback_keyword_end);//overwrite the file
+            //if($i==0) break;
+        }
     }
 }
 
@@ -91,10 +171,13 @@ function local_file_hash($basic_dir,$hash_dir)
     }
 }
 
-function trim_html($file_with_path,$target_fwp,$wayback_keyword)
+/** 先去除wayback特殊标记,再使用strip_tags去除html标签
+ * 此函数不删除script标签之间的代码,除了wayback的script内容
+ */ 
+function trim_html($file_with_path,$target_fwp,$wayback_keyword,$wayback_keyword_end)
 {
-    $str_content=file_get_contents($file_with_path);
-    $converted_content=strip_tags($str_content);//converted_content是去除html标签后的字符串
+    $converted_content=file_get_contents($file_with_path);
+    //$converted_content=strip_tags($str_content);//converted_content是去除html标签后的字符串
     //remove original content:Wayback Rewrite JS Include
     //remove trimmed content:wayback's 'DOMContentLoaded line
     //clean方法:找到关键字所在位置,向前和向后搜索回车标志,删除其所在的行
@@ -107,8 +190,10 @@ function trim_html($file_with_path,$target_fwp,$wayback_keyword)
         //strrpos, offset, If the value is negative, search will instead start from that many characters from the end of the string, searching backwards.
         //offset-1代表向后寻找,offset的绝对值代表从文件末尾开始计算的偏移量
         $former_carriage_return_pos=strrpos($converted_content,"\n",(-1)*($converted_len-$firstpos ) );
-        //next return
-        $later_carriage_return_pos=strpos($converted_content,"\n",$firstpos);
+        //middle sign,找到<!-- End Wayback Rewrite JS Include -->
+        $middle_sign_pos=strpos($converted_content,$wayback_keyword_end,$firstpos);
+        //next return of middle sign
+        $later_carriage_return_pos=strpos($converted_content,"\n",$middle_sign_pos);
         if($former_carriage_return_pos!==false && $later_carriage_return_pos!==false)
         {
             //fetch the string between former and next return
@@ -118,7 +203,37 @@ function trim_html($file_with_path,$target_fwp,$wayback_keyword)
             $cleaned_string=str_replace($removed_string,"",$converted_content);//clean_string是除去DOMContentLoaded所在行的字符串         
         }
     }
-    file_put_contents($target_fwp,$cleaned_string);
+    $str_content=strip_tags($cleaned_string);//converted_content是去除html标签后的字符串
+    file_put_contents($target_fwp,$str_content);
+}
+
+/** 1.先把文件内容转小写;
+ * 2.去除所有的<script和</script>之间的内容,包括标签;
+ * 3.使用phpstrip_tags函数去除html标签
+ */ 
+function trim_html_script($file_with_path,$target_fwp,$start_kw,$end_kw)
+{
+    $str_content=file_get_contents($file_with_path);
+    $converted_content=strtolower($str_content);//convert all content in lower case
+    //remove all content between script tags, in lower case
+    $converted_len=strlen($converted_content);
+    //$start_kw="<script";$end_kw="</script>";
+    $firstpos=strpos($converted_content,$start_kw);//$firstpos=strpos($converted_content,"<script");
+    $cleaned_string="";
+    while($firstpos!==false)//find marker
+    {        
+        $nextpos=strpos($converted_content,$end_kw,$firstpos);//find the end position of </script>
+        if($nextpos!==false)
+        {
+            $removed_string=substr($converted_content,$firstpos,$nextpos+strlen($end_kw)-$firstpos);
+            //echo $removed_string."\n";
+            $cleaned_string=str_replace($removed_string,"",$converted_content);
+            $converted_content=$cleaned_string;
+        }
+        $firstpos=strpos($converted_content,$start_kw);
+    }
+    $str_content=strip_tags($converted_content);//str_content是去除html标签后的字符串
+    file_put_contents($target_fwp,$str_content);
 }
 
 function list_file_recursive($basic_dir,&$rt)//递归列子目录下所有文件
@@ -307,7 +422,7 @@ function get_time_stamp_in_year($source,$start_keyword,$end_keyword,$token_keywo
 function year_process($ymarr)
 {
     //$ymarr["first_ts"]="20130503140310"
-    $cnt_years=count($dtarr["years"]);//the year count
+    //$cnt_years=count($ymarr["years"]);//the year count
     $start_year=substr($ymarr["first_ts"],0,4);//truncate the first 4 digit is start year.
     $last_year=substr($ymarr["last_ts"],0,4);    
     $years_arr=array();
