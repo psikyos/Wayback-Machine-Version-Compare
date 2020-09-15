@@ -49,4 +49,7 @@ hash值 具有该值的文档数量n  n个该文档的名字,以时间为文档�
 ## 6.手工去wayback Machine上下载需要的版本
 ## 7.甘特图
 需要使用php的jgraph库。将part-r-00000和plot.php放在web目录下,浏览器下可以绘制得到关于时间的甘特图。
+查看plot_jpg目录可得到甘特图示例。
+![nutch gante picture example](https://github.com/psikyos/Wayback-Machine-Version-Compare/blob/master/plot_jpg/nutch_order_plot.jpg)
+
 全文完。
